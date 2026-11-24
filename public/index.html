@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2D58A6">
+<title>Slip Scanner</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='5' y='3' width='22' height='26' rx='3' fill='%23F4F5F9' stroke='%232D58A6' stroke-width='2'/%3E%3Crect x='5' y='3' width='22' height='7' rx='3' fill='%232D58A6'/%3E%3Cpath d='M10 20c3-2 5 2 8 0s4-2 5-1' stroke='%23C42A2F' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- red pen underline used for fields that need a human look -->
+    <path id="pen" d="M2 6 C 20 2, 38 9, 58 5 S 92 3, 118 6" />
+  </defs>
+</svg>
+
+<header class="bar">
+  <div class="brand">
+    <span class="brand-ar" lang="ar" dir="rtl">فيض حسيني</span>
+    <span class="brand-en">Transport slips</span>
+  </div>
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <a href="#scan" role="tab" id="tab-scan">Scanner</a>
+    <a href="#review" role="tab" id="tab-review">Dashboard</a>
+  </nav>
+  <button class="icon-btn" id="open-settings" type="button" aria-label="Google Sheet settings" title="Google Sheet settings">
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M5 3h10l4 4v14H5z" opacity=".18"/><path fill="none" stroke="currentColor" stroke-width="1.6" d="M5 3h10l4 4v14H5zM8 11h8M8 15h8M8 19h5M12 11v8"/></svg>
+  </button>
+</header>
+
+<!-- ================= SCANNER ================= -->
+<main id="view-scan" class="view" hidden>
+  <section class="scan-hero">
+    <label class="shoot" for="cam-input">
+      <span class="shoot-icon" aria-hidden="true">
+        <svg viewBox="0 0 48 48" width="44" height="44"><path d="M8 15h7l3-5h12l3 5h7v22H8z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><circle cx="24" cy="25" r="7" fill="none" stroke="currentColor" stroke-width="2.4"/></svg>
+      </span>
+      <span class="shoot-text">
+        <strong>Take photo of a slip</strong>
+        <span>Keep the whole slip in frame. Take the next one straight after.</span>
+      </span>
+    </label>
+    <input id="cam-input" type="file" accept="image/*" capture="environment" hidden>
+
+    <label class="pick" for="pick-input">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="3" y="5" width="15" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6 21h15V8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m5 16 4-4 3 3 2-2 3 3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+      Choose photos from gallery
+      <small>Select up to 200 at once</small>
+    </label>
+    <input id="pick-input" type="file" accept="image/*" multiple hidden>
+  </section>
+
+  <section class="batch" id="batch" hidden aria-live="polite">
+    <div class="batch-head">
+      <div>
+        <p class="batch-count"><span id="b-up">0</span><span class="of"> of <span id="b-total">0</span></span></p>
+        <p class="batch-sub" id="b-sub">uploaded</p>
+      </div>
+      <button class="text-btn" id="b-new" type="button">Start new batch</button>
+    </div>
+    <div class="meter" aria-hidden="true"><span id="m-up"></span><span id="m-done"></span></div>
+    <ul class="batch-legend">
+      <li><i class="dot up"></i><span id="b-legend-up">Uploading</span></li>
+      <li><i class="dot read"></i><span id="b-reading">0</span> being read</li>
+      <li><i class="dot done"></i><span id="b-done">0</span> read</li>
+      <li class="err-li" hidden><i class="dot err"></i><span id="b-err">0</span> failed</li>
+    </ul>
+    <p class="batch-note" id="b-note">Keep this page open until every photo is uploaded. Reading continues on the server after that, so you can close it.</p>
+    <ol class="thumbs" id="thumbs"></ol>
+    <a class="go-review" href="#review" id="b-go">Open dashboard to check the results</a>
+  </section>
+</main>
+
+<!-- ================= DASHBOARD ================= -->
+<main id="view-review" class="view" hidden>
+  <section class="stats" id="stats" aria-live="polite">
+    <div class="stat"><b id="s-total">0</b><span>slips</span></div>
+    <div class="stat"><b id="s-reading">0</b><span>still being read</span></div>
+    <div class="stat flagstat"><b id="s-flag">0</b><span>need a look</span></div>
+    <div class="stat fill">
+      <b id="s-fill">0%</b>
+      <span>fields filled <em id="s-fill-note"></em></span>
+    </div>
+  </section>
+
+  <section class="toolbar">
+    <div class="seg" role="radiogroup" aria-label="Show">
+      <button type="button" data-filter="all" aria-pressed="true">All</button>
+      <button type="button" data-filter="flag" aria-pressed="false">Need a look <span class="n" id="f-flag"></span></button>
+      <button type="button" data-filter="reading" aria-pressed="false">Being read <span class="n" id="f-reading"></span></button>
+      <button type="button" data-filter="error" aria-pressed="false">Failed <span class="n" id="f-error"></span></button>
+      <button type="button" data-filter="unsent" aria-pressed="false">Not in sheet yet <span class="n" id="f-unsent"></span></button>
+    </div>
+    <div class="toolbar-right">
+      <select id="batch-filter" aria-label="Batch"><option value="">All batches</option></select>
+      <input type="search" id="search" placeholder="Search driver, group, route" aria-label="Search">
+    </div>
+  </section>
+
+  <section class="bulk" id="bulk" hidden>
+    <span id="bulk-count">0 selected</span>
+    <button type="button" data-bulk="push" class="primary">Send to Google Sheet</button>
+    <button type="button" data-bulk="copy">Copy rows</button>
+    <button type="button" data-bulk="csv">Download CSV</button>
+    <button type="button" data-bulk="reviewed">Mark as checked</button>
+    <button type="button" data-bulk="retry">Read again</button>
+    <button type="button" data-bulk="delete" class="danger">Delete</button>
+    <button type="button" data-bulk="clear" class="text-btn">Clear selection</button>
+  </section>
+
+  <div class="table-wrap">
+    <table class="ledger" id="ledger">
+      <thead><tr id="ledger-head"></tr></thead>
+      <tbody id="ledger-body"></tbody>
+    </table>
+    <div class="empty" id="empty" hidden>
+      <p class="empty-title">No slips here yet</p>
+      <p>Open the Scanner on your phone and photograph a stack of slips. They show up here as they are read.</p>
+      <a href="#scan" class="primary-link">Go to Scanner</a>
+    </div>
+  </div>
+</main>
+
+<!-- ================= REVIEW PANEL ================= -->
+<div class="panel-scrim" id="scrim" hidden></div>
+<aside class="panel" id="panel" hidden aria-labelledby="p-title" role="dialog" aria-modal="true">
+  <div class="panel-photo" id="p-photo-wrap">
+    <div class="photo-tools">
+      <button type="button" class="icon-btn light" id="p-rotate" aria-label="Rotate photo" title="Rotate">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 11a8 8 0 1 1-2.3-5.6M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+      <button type="button" class="icon-btn light" id="p-zoom" aria-label="Zoom photo" title="Zoom">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m15.5 15.5 5 5M10.5 7.5v6M7.5 10.5h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="photo-scroll" id="p-scroll"><img id="p-img" alt="Photo of the transport slip"></div>
+  </div>
+  <div class="panel-form">
+    <div class="panel-head">
+      <div>
+        <h2 id="p-title">Slip</h2>
+        <p class="panel-sub" id="p-sub"></p>
+      </div>
+      <div class="panel-nav">
+        <button type="button" class="icon-btn" id="p-prev" aria-label="Previous slip" title="Previous slip (Alt+↑)"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m6 15 6-6 6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+        <button type="button" class="icon-btn" id="p-next" aria-label="Next slip" title="Next slip (Alt+↓)"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+        <button type="button" class="icon-btn" id="p-close" aria-label="Close" title="Close (Esc)"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2"/></svg></button>
+      </div>
+    </div>
+    <p class="panel-msg" id="p-msg" hidden></p>
+    <form id="p-form" autocomplete="off"></form>
+    <div class="panel-extras" id="p-extras"></div>
+    <div class="panel-actions">
+      <button type="button" class="primary" id="p-check">Save and mark as checked</button>
+      <button type="button" id="p-save">Save</button>
+      <button type="button" id="p-retry">Read again</button>
+      <button type="button" class="danger text-btn" id="p-delete">Delete slip</button>
+    </div>
+    <p class="hint">Ctrl + Enter saves, marks as checked and opens the next slip that needs a look.</p>
+  </div>
+</aside>
+
+<!-- ================= SETTINGS ================= -->
+<dialog id="settings" class="settings">
+  <form method="dialog" id="settings-form">
+    <h2>Connect your Google Sheet</h2>
+    <p>Once connected, “Send to Google Sheet” adds the selected rows to the bottom of your sheet, matching columns by name. It's a one-time setup of about two minutes.</p>
+    <ol class="steps">
+      <li>Open the sheet and go to <b>Extensions</b> then <b>Apps Script</b>.</li>
+      <li>Delete what is there, paste the code below and press Save.
+        <div class="code-box"><pre id="script-code"></pre><button type="button" id="copy-script">Copy code</button></div>
+      </li>
+      <li>Click <b>Deploy</b> then <b>New deployment</b>. Choose type <b>Web app</b>, set “Execute as” to <b>Me</b> and “Who has access” to <b>Anyone</b>, then Deploy and allow access.</li>
+      <li>Copy the Web app URL and paste it here.</li>
+    </ol>
+    <label class="field"><span>Web app URL</span><input id="set-hook" type="url" placeholder="https://script.google.com/macros/s/…/exec"></label>
+    <label class="field"><span>Tab to add rows to</span><input id="set-tab" type="text" placeholder="FAIZ VEHICLES"></label>
+    <p class="panel-msg" id="set-msg" hidden></p>
+    <p class="engine-note" id="engine-note"></p>
+    <div class="dialog-actions">
+      <button type="button" class="text-btn" id="set-cancel">Cancel</button>
+      <button type="button" class="primary" id="set-save">Save connection</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
