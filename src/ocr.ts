@@ -271,6 +271,35 @@ export function readingToFields(r: SlipReading): { fields: Fields; extras: Recor
   return { fields: f, extras };
 }
 
+const MONEY_VOTE: [keyof SlipReading, FieldKey][] = [["petrol", "petrol_cash"], ["parking", "parking"], ["meal", "meal"], ["other_amount", "raseed_misc"]];
+
+// Tick boxes and amounts are decided by majority vote of the engines (the merge model tends to
+// accept a tick or an amount that only one engine imagined).
+function applyVotes(readings: SlipReading[], merged: SlipReading, review: Set<FieldKey>): SlipReading {
+  const n = readings.length;
+  const need = n >= 3 ? 2 : 1;
+  const out: SlipReading = { ...merged };
+  for (const key of ["department_work_checked", "kg_barnamaj_checked"] as const) {
+    const votes = new Map<string, number>();
+    for (const r of readings) for (const b of new Set(r[key].map((x) => x.trim().toLowerCase()))) votes.set(b, (votes.get(b) || 0) + 1);
+    out[key] = [...votes.entries()].filter(([, c]) => c >= need).map(([b]) => b);
+  }
+  for (const [rk, fk] of MONEY_VOTE) {
+    const votes = new Map<string, number>();
+    for (const r of readings) {
+      const v = parseMoney(r[rk] as string);
+      votes.set(v, (votes.get(v) || 0) + 1);
+    }
+    const [best, count] = [...votes.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (count >= need) (out as any)[rk] = best;
+    else {
+      (out as any)[rk] = parseMoney(merged[rk] as string);
+      review.add(fk);
+    }
+  }
+  return out;
+}
+
 // Which sheet fields the engines disagreed on (after converting each reading to a row).
 function disagreements(rows: Fields[]): Set<FieldKey> {
   const out = new Set<FieldKey>();
@@ -320,7 +349,11 @@ export async function ocrSlip(env: OcrEnv, image: ArrayBuffer, mediaType: string
         errors.push(`merge: ${String((e as Error).message)}`);
         final = readings[0];
       }
-      for (const k of disagreements(readings.map((r) => readingToFields(r).fields))) review.add(k);
+      final = applyVotes(readings, final, review);
+      for (const k of disagreements(readings.map((r) => readingToFields(r).fields))) {
+        // money fields are settled by the vote above; only names, places and dates go to review here
+        if (!MONEY_VOTE.some(([, f]) => f === k)) review.add(k);
+      }
     } else {
       final = readings[0];
     }
