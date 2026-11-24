@@ -114,6 +114,20 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   ]);
 }
 
+// Workers AI sometimes answers "busy" (rate limit / capacity) when many slips are read at once.
+async function retryBusy<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      const msg = String((e as Error)?.message || e);
+      const busy = /429|capacity|rate.?limit|too many|3040|3046|overloaded|unavailable|5\d\d/i.test(msg) && !/took longer/.test(msg);
+      if (!busy || attempt >= 4) throw e;
+      await new Promise((r) => setTimeout(r, 4000 * attempt + Math.random() * 3000));
+    }
+  }
+}
+
 function toBase64(bytes: Uint8Array): string {
   let s = "";
   const chunk = 0x8000;
@@ -122,7 +136,7 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 async function readWithWorkersAI(env: OcrEnv, model: string, prompt: string, dataUrl: string): Promise<SlipReading> {
-  const res = await withTimeout(env.AI.run(model as any, {
+  const res = await retryBusy(() => withTimeout(env.AI.run(model as any, {
     messages: [
       {
         role: "user",
@@ -134,7 +148,7 @@ async function readWithWorkersAI(env: OcrEnv, model: string, prompt: string, dat
     ],
     max_tokens: 6000,
     temperature: 0,
-  } as any), 110_000, model);
+  } as any), 110_000, model));
   return normalizeReading(extractJson(textOf(res)));
 }
 
@@ -149,11 +163,11 @@ async function mergeWithWorkersAI(env: OcrEnv, model: string, vocab: string, rea
     }
     return o;
   });
-  const res = await withTimeout(env.AI.run(model as any, {
+  const res = await retryBusy(() => withTimeout(env.AI.run(model as any, {
     messages: [{ role: "user", content: mergePrompt(vocab, slim) }],
     max_tokens: 8000,
     temperature: 0,
-  } as any), 90_000, "merge");
+  } as any), 90_000, "merge"));
   return normalizeReading(extractJson(textOf(res)));
 }
 

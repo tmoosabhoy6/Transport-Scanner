@@ -14,12 +14,8 @@
   "kv_namespaces": [
     { "binding": "IMAGES", "id": "742c40d6dd7946a5af983b1c36ce8db8" }
   ],
-  "queues": {
-    "producers": [{ "binding": "OCR_QUEUE", "queue": "transport-scanner-ocr" }],
-    "consumers": [
-      { "queue": "transport-scanner-ocr", "max_batch_size": 4, "max_batch_timeout": 2, "max_retries": 5, "max_concurrency": 20 }
-    ]
-  },
+  // One Workflow instance per slip: runs many slips in parallel with automatic retries
+  "workflows": [{ "name": "transport-scanner-ocr", "binding": "OCR_FLOW", "class_name": "OcrWorkflow" }],
   "triggers": { "crons": ["*/10 * * * *"] },
   "vars": {
     // Workers AI models used when no ANTHROPIC_API_KEY secret is set

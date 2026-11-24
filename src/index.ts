@@ -1,3 +1,4 @@
+import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import { COLUMNS, CORE_KEYS, computeTotal, emptyFields, type FieldKey, type Fields } from "./fields";
 import { ocrSlip, type OcrEnv } from "./ocr";
 import type { Alias } from "./vocab";
@@ -18,10 +19,32 @@ const STATIC: Record<string, [string, string]> = {
 export interface Env extends OcrEnv {
   DB: D1Database;
   IMAGES: KVNamespace;
-  OCR_QUEUE: Queue<{ id: string }>;
+  OCR_FLOW: Workflow<{ id: string }>;
 }
 
 const MAX_ATTEMPTS = 3;
+
+// Every slip is read by its own Workflow instance, so a batch of 200 is read in parallel.
+async function startReading(env: Env, ids: string[]) {
+  const stamp = Date.now().toString(36);
+  for (let i = 0; i < ids.length; i += 100) {
+    await env.OCR_FLOW.createBatch(ids.slice(i, i + 100).map((id) => ({ id: `${id}-${stamp}`, params: { id } })));
+  }
+}
+
+export class OcrWorkflow extends WorkflowEntrypoint<Env, { id: string }> {
+  async run(event: WorkflowEvent<{ id: string }>, step: WorkflowStep) {
+    return step.do(
+      "read slip",
+      { retries: { limit: 2, delay: "30 seconds", backoff: "exponential" }, timeout: "6 minutes" },
+      async () => {
+        const outcome = await processSlip(this.env, event.payload.id);
+        if (outcome === "retry") throw new Error("Reading failed, trying again");
+        return outcome;
+      },
+    );
+  }
+}
 const now = () => new Date().toISOString();
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
@@ -169,7 +192,7 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
     await env.DB.prepare(
       "INSERT INTO slips (id, batch_id, created_at, updated_at, status, file_name, fields, review) VALUES (?, ?, ?, ?, 'queued', ?, ?, '[]')",
     ).bind(id, batch, t, t, name, JSON.stringify(emptyFields())).run();
-    await env.OCR_QUEUE.send({ id });
+    await startReading(env, [id]);
     return json({ id, status: "queued" });
   }
 
@@ -212,7 +235,7 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
     }
     if (sub === "retry" && method === "POST") {
       await env.DB.prepare("UPDATE slips SET status = 'queued', attempts = 0, error = NULL, updated_at = ? WHERE id = ?").bind(now(), id).run();
-      await env.OCR_QUEUE.send({ id });
+      await startReading(env, [id]);
       return json({ ok: true });
     }
     if (!sub && method === "PATCH") {
@@ -272,7 +295,7 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
       }
     }
     if (body.action === "retry") {
-      for (let i = 0; i < ids.length; i += 100) await env.OCR_QUEUE.sendBatch(ids.slice(i, i + 100).map((id) => ({ body: { id } })));
+      await startReading(env, ids);
     }
     return json({ ok: true, count: ids.length });
   }
@@ -358,16 +381,6 @@ export default {
     return new Response("Not found", { status: 404 });
   },
 
-  async queue(batch: MessageBatch<{ id: string }>, env: Env): Promise<void> {
-    await Promise.all(
-      batch.messages.map(async (msg) => {
-        const outcome = await processSlip(env, msg.body.id);
-        if (outcome === "retry") msg.retry({ delaySeconds: 30 });
-        else msg.ack();
-      }),
-    );
-  },
-
   // Safety net: re-queue slips stuck in "queued"/"processing" for more than 15 minutes.
   async scheduled(_ev: ScheduledController, env: Env): Promise<void> {
     const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
@@ -383,6 +396,6 @@ export default {
         ids.push(r.id);
       }
     }
-    for (let i = 0; i < ids.length; i += 100) await env.OCR_QUEUE.sendBatch(ids.slice(i, i + 100).map((id) => ({ body: { id } })));
+    await startReading(env, ids);
   },
 };
