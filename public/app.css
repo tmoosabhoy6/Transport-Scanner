@@ -245,6 +245,21 @@ button:disabled { opacity: .5; cursor: default; }
 .panel-actions .danger.text-btn { margin-left: auto; }
 .hint { margin: 10px 0 0; font-size: 12.5px; color: var(--ink-3); }
 
+/* =================== MEMORY =================== */
+.mem-btn { border: 1px solid var(--rule); background: var(--sheet); border-radius: var(--r-ctl); padding: 7px 12px; font-size: 14px; color: var(--blue); font-weight: 500; }
+.mem-btn .n { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.field .mem-note { font-size: 12px; color: var(--blue-deep); line-height: 1.35; }
+.field.remembered input { border-color: #A9BCE0; background: var(--blue-wash); }
+.memory-body { padding: 24px; }
+.memory h3 { margin: 18px 0 6px; font-size: 15px; font-weight: 600; }
+.mem-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule-soft); }
+.mem-list li { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--rule-soft); font-size: 14px; }
+.mem-list s { color: var(--pen); text-decoration-thickness: 1.5px; }
+.mem-list b { font-weight: 600; }
+.mem-list .ar { color: var(--ink-3); font-style: normal; margin-left: 4px; }
+.mem-hits { color: var(--ink-3); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mem-list li.mem-empty { display: block; color: var(--ink-3); }
+
 /* =================== SETTINGS =================== */
 .settings { border: 0; border-radius: 14px; padding: 0; width: min(640px, 94vw); max-height: 90vh; box-shadow: var(--shadow-lift); color: var(--ink); }
 .settings::backdrop { background: rgba(26,36,64,.45); }

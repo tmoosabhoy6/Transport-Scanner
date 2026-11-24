@@ -498,10 +498,13 @@
         if (c.key === "credit") html.push(`<p class="form-sep">Usually not on the slip</p>`);
         const ar = s.extras && s.extras[ARABIC_FOR[c.key]];
         const wide = ["group", "route", "remarks"].includes(c.key);
+        const mem = !s.reviewed && s.extras && s.extras.remembered && s.extras.remembered[c.key];
+        const memNote = mem === undefined || mem === null ? "" : `<small class="mem-note">Fixed from memory of your past corrections. The AI read ${/^moved from/.test(mem) ? "it in another column (" + esc(mem) + ")" : mem ? "“" + esc(mem) + "”" : "nothing"}.</small>`;
         html.push(
-          `<label class="field ${wide ? "wide" : ""} ${flagged.includes(c.key) ? "flagged" : ""}">` +
+          `<label class="field ${wide ? "wide" : ""} ${flagged.includes(c.key) ? "flagged" : ""} ${memNote ? "remembered" : ""}">` +
             `<span>${esc(c.label)}${ar ? `<i class="ar" lang="ar" dir="rtl" title="Written on slip">${esc(ar)}</i>` : ""}</span>` +
             `<input name="${c.key}" value="${esc(s.fields[c.key] || "")}" ${c.money ? 'inputmode="numeric"' : ""} ${c.key === "gr_total" ? 'placeholder="Adds up automatically"' : ""}>` +
+            memNote +
           `</label>`,
         );
       });
@@ -541,9 +544,11 @@
       try {
         const body = { fields: values() };
         if (markChecked) body.reviewed = true;
-        const { slip } = await api(`/api/slips/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+        const { slip, learned } = await api(`/api/slips/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
         Dashboard.replace(slip);
-        toast(markChecked ? "Saved and marked as checked." : "Saved.");
+        const lesson = learned ? ` Learned ${learned === 1 ? "1 correction" : learned + " corrections"} for future slips.` : "";
+        toast((markChecked ? "Saved and marked as checked." : "Saved.") + lesson);
+        if (learned) Memory.refreshCount();
         return true;
       } catch (e) {
         toast(e.message, true);
@@ -621,6 +626,69 @@
   })();
 
   // ================================================================== SETTINGS
+  // ================================================================== MEMORY
+  const Memory = (() => {
+    const dlg = $("#memory");
+    const LABEL = Object.fromEntries(COLUMNS.map((c) => [c.key, c.label]));
+    const KIND = { driver: "Driver", group: "Guest / group", vehicle: "Vehicle", place: "Place" };
+
+    async function refreshCount() {
+      try {
+        const m = await api("/api/memory");
+        const n = m.corrections.length + m.aliases.length;
+        $("#mem-count").textContent = n ? String(n) : "";
+        return m;
+      } catch { return null; }
+    }
+
+    function render(m) {
+      const corr = m.corrections.map((c) => {
+        let what;
+        if (c.field.startsWith("move:")) {
+          const [from, to] = c.field.slice(5).split(">");
+          what = `<b>${esc(fmtMoney(c.ai_value))}</b> read under ${esc(LABEL[from] || from)}, belongs under <b>${esc(LABEL[to] || to)}</b>`;
+        } else {
+          what = `${esc(LABEL[c.field] || c.field)}: <s>${esc(c.ai_value)}</s> <b>${c.corrected ? esc(c.corrected) : "<em>blank</em>"}</b>` +
+            (c.arabic ? ` <i class="ar" lang="ar" dir="rtl">${esc(c.arabic)}</i>` : "");
+        }
+        return `<li><span class="mem-what">${what}</span><span class="mem-hits">${c.hits > 1 ? c.hits + " times" : "once"}</span>` +
+          `<button type="button" class="text-btn danger" data-forget-correction="${c.id}">Forget</button></li>`;
+      }).join("");
+      const spell = m.aliases.map((a) =>
+        `<li><span class="mem-what">${esc(KIND[a.kind] || a.kind)}: <i class="ar" lang="ar" dir="rtl">${esc(a.arabic)}</i> is <b>${esc(a.english)}</b></span><span class="mem-hits"></span>` +
+        `<button type="button" class="text-btn danger" data-forget-spelling="${esc(a.kind)}|${esc(a.arabic)}">Forget</button></li>`,
+      ).join("");
+      $("#mem-corrections").innerHTML = corr || `<li class="mem-empty">Nothing yet. When you fix a field the AI got wrong and save, it shows up here.</li>`;
+      $("#mem-spellings").innerHTML = spell || `<li class="mem-empty">Nothing yet. Names you correct or mark as checked show up here.</li>`;
+    }
+
+    async function open() {
+      const m = await refreshCount();
+      if (!m) { toast("Could not load what the app has learned.", true); return; }
+      render(m);
+      dlg.showModal();
+    }
+
+    $("#open-memory").addEventListener("click", open);
+    $("#mem-close").addEventListener("click", () => dlg.close());
+    dlg.addEventListener("click", async (e) => {
+      const c = e.target.closest("[data-forget-correction]");
+      const sp = e.target.closest("[data-forget-spelling]");
+      if (!c && !sp) return;
+      try {
+        if (c) await api(`/api/memory/correction?id=${encodeURIComponent(c.dataset.forgetCorrection)}`, { method: "DELETE" });
+        else {
+          const [kind, ...rest] = sp.dataset.forgetSpelling.split("|");
+          await api(`/api/memory/spelling?kind=${encodeURIComponent(kind)}&arabic=${encodeURIComponent(rest.join("|"))}`, { method: "DELETE" });
+        }
+        render(await refreshCount());
+        toast("Forgotten. Future slips won't use it.");
+      } catch (err) { toast(err.message, true); }
+    });
+    refreshCount();
+    return { refreshCount };
+  })();
+
   const Settings = (() => {
     const dlg = $("#settings");
     const SCRIPT = `// Faiz transport slip scanner: adds rows sent from the scanner app.

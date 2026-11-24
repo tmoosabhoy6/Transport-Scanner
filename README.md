@@ -13,8 +13,14 @@ There's no login. Anyone who has the link can use the app.
 
 1. **Scanner**: take photos one after another, or choose up to 200 from the gallery. Photos are shrunk on the phone and uploaded three at a time. Keep the page open until the upload count finishes. Reading happens on the server, so you can close the page after that.
 2. **Reading**: every slip gets its own Cloudflare Workflow, so a batch is read in parallel. Three Cloudflare AI vision models read it independently, and a fourth model merges their readings. The merge step uses a list of known driver names, vehicles and places, plus spellings learned from your past corrections. Tick boxes and amounts need at least 2 of the 3 models to agree. Any field where the models disagree, or that is blank, is **underlined in red pen** on the dashboard.
-3. **Dashboard**: click a row to see the photo next to the fields. Fix anything underlined, then press **Save and mark as checked** (or Ctrl+Enter), which opens the next slip that needs a look. When you mark a slip as checked, the app remembers its Arabic to English spellings for future slips.
+3. **Dashboard**: click a row to see the photo next to the fields. Fix anything underlined, then press **Save and mark as checked** (or Ctrl+Enter), which opens the next slip that needs a look. Every correction you save is remembered (see below).
 4. **To the sheet**: select rows and use **Send to Google Sheet** (one-time setup under the sheet icon, top right). You can also use **Copy rows** and paste into the sheet, or **Download CSV**.
+
+**It learns from your corrections.** The app keeps what the AI first read on each slip. Whenever you change a field and save, it records "AI read X, correct is Y", including an amount moved to a different column, plus the Arabic to English spelling of names you correct or mark as checked. Later slips use this in two ways:
+- the lessons are added to the AI's instructions, so it stops making the same mistake;
+- a text field (name, route, vehicle) the AI reads the same wrong way again is fixed automatically and marked "Fixed from memory" in the review panel. An amount is moved automatically once it has been corrected twice. If your past corrections disagree, nothing is changed automatically.
+
+Use **What it has learned** on the dashboard to see every lesson and forget any that are wrong. Only real mistakes are learned: filling in a field the AI left blank, or a column that isn't on the slip, doesn't create a lesson.
 
 The "fields filled" figure on the dashboard is the missing-field rate. It counts Date, Group, Department, Route, Driver Name, Vehicle and Gr.Total across all slips that have been read.
 
@@ -53,7 +59,7 @@ Add it in the Cloudflare dashboard as type **Secret** (not Text), or with the co
 
 ```bash
 npm install
-npx wrangler d1 execute transport-scanner --remote --file=schema.sql   # first time only
+npx wrangler d1 execute transport-scanner --remote --file=schema.sql   # first time only (includes all migrations)
 npx wrangler deploy
 ```
 

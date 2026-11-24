@@ -2,6 +2,7 @@ import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloud
 import { COLUMNS, CORE_KEYS, computeTotal, emptyFields, type FieldKey, type Fields } from "./fields";
 import { ocrSlip, type OcrEnv } from "./ocr";
 import type { Alias } from "./vocab";
+import { loadMemory, recordCorrections } from "./memory";
 // @ts-ignore text module
 import INDEX_HTML from "../public/index.html";
 // @ts-ignore text module
@@ -65,6 +66,7 @@ interface SlipRow {
   exported: number;
   error: string | null;
   raw?: string | null;
+  ai_fields?: string | null;
 }
 
 function present(r: SlipRow) {
@@ -84,11 +86,6 @@ function present(r: SlipRow) {
     exported: !!r.exported,
     error: r.error,
   };
-}
-
-async function loadAliases(env: Env): Promise<Alias[]> {
-  const { results } = await env.DB.prepare("SELECT kind, arabic, english FROM aliases ORDER BY hits DESC, updated_at DESC LIMIT 300").all<Alias>();
-  return results || [];
 }
 
 // Remember Arabic -> English spellings the user confirmed, so future slips come out the same way.
@@ -126,11 +123,11 @@ async function processSlip(env: Env, id: string): Promise<"done" | "retry" | "er
   try {
     const img = await env.IMAGES.getWithMetadata<{ type?: string }>(`img/${id}`, "arrayBuffer");
     if (!img.value) throw new Error("image not found");
-    const result = await ocrSlip(env, img.value, img.metadata?.type || "image/jpeg", await loadAliases(env));
+    const result = await ocrSlip(env, img.value, img.metadata?.type || "image/jpeg", await loadMemory(env.DB));
     await env.DB.prepare(
-      "UPDATE slips SET status = 'done', engine = ?, fields = ?, extras = ?, review = ?, raw = ?, error = NULL, updated_at = ? WHERE id = ?",
+      "UPDATE slips SET status = 'done', engine = ?, fields = ?, ai_fields = ?, extras = ?, review = ?, raw = ?, error = NULL, updated_at = ? WHERE id = ?",
     )
-      .bind(result.engine, JSON.stringify(result.fields), JSON.stringify(result.extras), JSON.stringify(result.review), JSON.stringify(result.raw), now(), id)
+      .bind(result.engine, JSON.stringify(result.fields), JSON.stringify(result.ai_fields), JSON.stringify(result.extras), JSON.stringify(result.review), JSON.stringify(result.raw), now(), id)
       .run();
     return "done";
   } catch (e) {
@@ -245,6 +242,9 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
       const fields: Fields = { ...emptyFields(), ...(row.fields ? JSON.parse(row.fields) : {}) };
       const extras = row.extras ? JSON.parse(row.extras) : {};
       let review: FieldKey[] = row.review ? JSON.parse(row.review) : [];
+      const before: Fields = { ...fields };
+      // What the AI first read (older slips without it: the values before the first edit)
+      const ai: Fields = row.ai_fields ? { ...emptyFields(), ...JSON.parse(row.ai_fields) } : { ...before };
       if (body.fields) {
         for (const c of COLUMNS) {
           const v = body.fields[c.key];
@@ -263,12 +263,19 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
           await learnAliases(env, fields, extras);
         }
       }
+      // Remember every correction so later slips don't repeat the mistake
+      let learned = 0;
+      if (body.fields && row.status === "done") {
+        learned = await recordCorrections(env.DB, ai, before, fields, extras);
+        const nameChanged = (["group", "driver_name", "vehicle", "route"] as FieldKey[]).some((k) => before[k] !== fields[k]);
+        if (nameChanged && !body.reviewed) await learnAliases(env, fields, extras);
+      }
       const exported = typeof body.exported === "boolean" ? (body.exported ? 1 : 0) : row.exported;
-      await env.DB.prepare("UPDATE slips SET fields = ?, review = ?, reviewed = ?, exported = ?, updated_at = ? WHERE id = ?")
-        .bind(JSON.stringify(fields), JSON.stringify(review), reviewed, exported, now(), id)
+      await env.DB.prepare("UPDATE slips SET fields = ?, ai_fields = ?, review = ?, reviewed = ?, exported = ?, updated_at = ? WHERE id = ?")
+        .bind(JSON.stringify(fields), JSON.stringify(ai), JSON.stringify(review), reviewed, exported, now(), id)
         .run();
       const updated = await env.DB.prepare("SELECT * FROM slips WHERE id = ?").bind(id).first<SlipRow>();
-      return json({ slip: present(updated!) });
+      return json({ slip: present(updated!), learned });
     }
     if (!sub && method === "DELETE") {
       await env.DB.prepare("DELETE FROM slips WHERE id = ?").bind(id).run();
@@ -355,6 +362,24 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
     if (!res.ok || !out?.ok) return json({ error: "Google Sheet did not accept the rows: " + (out?.error || text.slice(0, 300)) }, 502);
     for (const r of rows) await env.DB.prepare("UPDATE slips SET exported = 1, updated_at = ? WHERE id = ?").bind(now(), r.id).run();
     return json({ ok: true, appended: rows.length, sheet: tab });
+  }
+
+  // What the app has learned from corrections
+  if (path === "/api/memory" && method === "GET") {
+    const mem = await loadMemory(env.DB);
+    return json(mem);
+  }
+  if (path === "/api/memory/correction" && method === "DELETE") {
+    const cid = parseInt(url.searchParams.get("id") || "", 10);
+    if (!cid) return json({ error: "Missing id" }, 400);
+    await env.DB.prepare("DELETE FROM corrections WHERE id = ?").bind(cid).run();
+    return json({ ok: true });
+  }
+  if (path === "/api/memory/spelling" && method === "DELETE") {
+    const kind = url.searchParams.get("kind") || "";
+    const arabic = url.searchParams.get("arabic") || "";
+    await env.DB.prepare("DELETE FROM aliases WHERE kind = ? AND arabic = ?").bind(kind, arabic).run();
+    return json({ ok: true });
   }
 
   if (path === "/api/columns" && method === "GET") {

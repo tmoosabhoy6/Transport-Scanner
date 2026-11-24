@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS slips (
   reviewed INTEGER NOT NULL DEFAULT 0,
   exported INTEGER NOT NULL DEFAULT 0,
   error TEXT,
-  raw TEXT                         -- JSON: raw model readings (for debugging)
+  raw TEXT,                        -- JSON: raw model readings (for debugging)
+  ai_fields TEXT                   -- JSON: sheet columns exactly as the AI first read them
 );
 CREATE INDEX IF NOT EXISTS idx_slips_created ON slips(created_at);
 CREATE INDEX IF NOT EXISTS idx_slips_status ON slips(status);
@@ -33,3 +34,16 @@ CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- Every correction made in the dashboard: "AI read X in this field, the right value was Y"
+CREATE TABLE IF NOT EXISTS corrections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  field TEXT NOT NULL,          -- sheet field key, or "move:<from>><to>" for an amount put in the wrong column
+  ai_value TEXT NOT NULL,
+  arabic TEXT NOT NULL DEFAULT '',
+  corrected TEXT NOT NULL,
+  hits INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL,
+  UNIQUE (field, ai_value, arabic, corrected)
+);
+CREATE INDEX IF NOT EXISTS idx_corrections_field ON corrections(field, ai_value);

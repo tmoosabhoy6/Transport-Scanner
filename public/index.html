@@ -97,6 +97,7 @@
       <button type="button" data-filter="unsent" aria-pressed="false">Not in sheet yet <span class="n" id="f-unsent"></span></button>
     </div>
     <div class="toolbar-right">
+      <button type="button" class="mem-btn" id="open-memory">What it has learned <span class="n" id="mem-count"></span></button>
       <select id="batch-filter" aria-label="Batch"><option value="">All batches</option></select>
       <input type="search" id="search" placeholder="Search driver, group, route" aria-label="Search">
     </div>
@@ -187,6 +188,19 @@
       <button type="button" class="primary" id="set-save">Save connection</button>
     </div>
   </form>
+</dialog>
+
+<!-- ================= MEMORY ================= -->
+<dialog id="memory" class="settings memory">
+  <div class="memory-body">
+    <h2>What it has learned</h2>
+    <p>Every time you correct a field and save, the app remembers it. Later slips get these lessons, and a mistake it has been corrected on before is fixed automatically. If something here is wrong, forget it.</p>
+    <h3>Corrections</h3>
+    <ul class="mem-list" id="mem-corrections"></ul>
+    <h3>Name spellings</h3>
+    <ul class="mem-list" id="mem-spellings"></ul>
+    <div class="dialog-actions"><button type="button" class="primary" id="mem-close">Done</button></div>
+  </div>
 </dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>

@@ -3,7 +3,8 @@ import {
   CORE_KEYS, DEPARTMENT_FOR_SECTION, READING_JSON_SCHEMA, READING_KEYS, computeTotal, emptyFields, formatDate,
   parseMoney, routeFromBox, toWesternDigits, type FieldKey, type Fields, type SlipReading,
 } from "./fields";
-import { vocabText, type Alias } from "./vocab";
+import { vocabText } from "./vocab";
+import { applyMemory, lessonsText, type Memory } from "./memory";
 
 export interface OcrEnv {
   AI: Ai;
@@ -16,6 +17,7 @@ export interface OcrEnv {
 export interface OcrResult {
   engine: string;
   fields: Fields;
+  ai_fields: Fields;
   extras: Record<string, unknown>;
   review: FieldKey[];
   raw: unknown;
@@ -338,8 +340,9 @@ function disagreements(rows: Fields[]): Set<FieldKey> {
   return out;
 }
 
-export async function ocrSlip(env: OcrEnv, image: ArrayBuffer, mediaType: string, aliases: Alias[]): Promise<OcrResult> {
-  const vocab = vocabText(aliases);
+export async function ocrSlip(env: OcrEnv, image: ArrayBuffer, mediaType: string, memory: Memory): Promise<OcrResult> {
+  const lessons = lessonsText(memory);
+  const vocab = vocabText(memory.aliases) + (lessons ? "\n\n" + lessons : "");
   const prompt = visionPrompt(vocab);
   const b64 = toBase64(new Uint8Array(image));
   const review = new Set<FieldKey>();
@@ -395,12 +398,19 @@ export async function ocrSlip(env: OcrEnv, image: ArrayBuffer, mediaType: string
     raw = { readings, merged: final, errors, claudeError };
   }
 
-  const { fields, extras } = readingToFields(final);
+  const read = readingToFields(final);
+  const extras: Record<string, unknown> = read.extras;
   for (const u of final.unclear_fields) {
     const k = READING_TO_FIELD[u as keyof SlipReading];
     if (k) review.add(k);
   }
+  // Fix mistakes the office has corrected before
+  const { fields, fixed } = applyMemory(memory, read.fields, extras);
+  if (Object.keys(fixed).length) {
+    extras.remembered = fixed; // field -> what the AI had read
+    for (const k of Object.keys(fixed)) review.delete(k as FieldKey);
+  }
   for (const k of CORE_KEYS) if (!fields[k]) review.add(k);
   if (!fields.gr_total) review.add("gr_total");
-  return { engine, fields, extras, review: [...review], raw };
+  return { engine, fields, ai_fields: read.fields, extras, review: [...review], raw };
 }
