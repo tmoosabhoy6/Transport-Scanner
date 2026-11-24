@@ -343,10 +343,20 @@ export async function ocrSlip(env: OcrEnv, image: ArrayBuffer, mediaType: string
   let engine: string;
   let raw: unknown;
 
+  let claude: SlipReading | null = null;
+  let claudeError = "";
   if (env.ANTHROPIC_API_KEY) {
+    try {
+      claude = await readWithClaude(env, prompt, b64, mediaType);
+    } catch (e) {
+      // Bad key, no credit, or Claude unavailable: fall back to Cloudflare AI so slips still get read.
+      claudeError = String((e as Error)?.message || e).slice(0, 500);
+    }
+  }
+  if (claude) {
     engine = env.CLAUDE_MODEL || "claude-opus-5-5";
-    final = await readWithClaude(env, prompt, b64, mediaType);
-    raw = { claude: final };
+    final = claude;
+    raw = { claude };
   } else {
     const models = (env.VISION_MODELS || "@cf/qwen/qwen3.8-27b,@cf/meta/llama-4-scout-17b-16e-instruct,@cf/google/gemma-4-26b-a4b-it")
       .split(",").map((s) => s.trim()).filter(Boolean);
@@ -377,8 +387,8 @@ export async function ocrSlip(env: OcrEnv, image: ArrayBuffer, mediaType: string
     } else {
       final = readings[0];
     }
-    engine = `workers-ai x${readings.length}`;
-    raw = { readings, merged: final, errors };
+    engine = `workers-ai x${readings.length}` + (claudeError ? " (Claude failed: " + claudeError.slice(0, 120) + ")" : "");
+    raw = { readings, merged: final, errors, claudeError };
   }
 
   const { fields, extras } = readingToFields(final);
