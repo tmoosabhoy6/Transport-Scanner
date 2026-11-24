@@ -17,7 +17,7 @@
   "queues": {
     "producers": [{ "binding": "OCR_QUEUE", "queue": "transport-scanner-ocr" }],
     "consumers": [
-      { "queue": "transport-scanner-ocr", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 5, "max_concurrency": 15 }
+      { "queue": "transport-scanner-ocr", "max_batch_size": 4, "max_batch_timeout": 2, "max_retries": 5, "max_concurrency": 20 }
     ]
   },
   "triggers": { "crons": ["*/10 * * * *"] },
