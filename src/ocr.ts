@@ -106,6 +106,14 @@ function normalizeReading(r: any): SlipReading {
   return out as SlipReading;
 }
 
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let t: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    p.finally(() => clearTimeout(t)),
+    new Promise<T>((_, rej) => { t = setTimeout(() => rej(new Error(`${label} took longer than ${Math.round(ms / 1000)}s`)), ms); }),
+  ]);
+}
+
 function toBase64(bytes: Uint8Array): string {
   let s = "";
   const chunk = 0x8000;
@@ -114,7 +122,7 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 async function readWithWorkersAI(env: OcrEnv, model: string, prompt: string, dataUrl: string): Promise<SlipReading> {
-  const res = await env.AI.run(model as any, {
+  const res = await withTimeout(env.AI.run(model as any, {
     messages: [
       {
         role: "user",
@@ -126,7 +134,7 @@ async function readWithWorkersAI(env: OcrEnv, model: string, prompt: string, dat
     ],
     max_tokens: 6000,
     temperature: 0,
-  } as any);
+  } as any), 110_000, model);
   return normalizeReading(extractJson(textOf(res)));
 }
 
@@ -141,17 +149,18 @@ async function mergeWithWorkersAI(env: OcrEnv, model: string, vocab: string, rea
     }
     return o;
   });
-  const res = await env.AI.run(model as any, {
+  const res = await withTimeout(env.AI.run(model as any, {
     messages: [{ role: "user", content: mergePrompt(vocab, slim) }],
     max_tokens: 8000,
     temperature: 0,
-  } as any);
+  } as any), 90_000, "merge");
   return normalizeReading(extractJson(textOf(res)));
 }
 
 async function readWithClaude(env: OcrEnv, prompt: string, b64: string, mediaType: string): Promise<SlipReading> {
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-  const response = await client.messages.create({
+  const client2 = client.withOptions({ timeout: 180_000, maxRetries: 1 });
+  const response = await client2.messages.create({
     model: env.CLAUDE_MODEL || "claude-opus-5-5",
     max_tokens: 16000,
     output_config: { effort: "medium", format: { type: "json_schema", schema: READING_JSON_SCHEMA as any } },

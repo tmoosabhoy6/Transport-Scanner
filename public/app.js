@@ -329,7 +329,8 @@
           const flagged = s.status === "done" && !s.reviewed && s.review.includes(k);
           let txt = c.money ? fmtMoney(v) : esc(v);
           if (!v && s.status === "done" && CORE.includes(k)) txt = `<span class="missing">missing</span>`;
-          if (isReading(s) && !v) txt = "";
+          if (isReading(s) && !v) txt = k === "group" ? `<span class="pending">Being read</span>` : "";
+          if (s.status === "error" && !v && k === "group") txt = `<span class="missing">Couldn't read, open to fill in</span>`;
           const cls = [c.money ? "num" : "", k === "gr_total" ? "total" : "", flagged ? "pen" : ""].join(" ").trim();
           return `<td class="${cls}" title="${esc(v)}">${txt}</td>`;
         }).join("");
