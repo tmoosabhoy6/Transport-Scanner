@@ -148,7 +148,7 @@ async function readWithWorkersAI(env: OcrEnv, model: string, prompt: string, dat
     ],
     max_tokens: 6000,
     temperature: 0,
-  } as any), 110_000, model));
+  } as any), 150_000, model));
   return normalizeReading(extractJson(textOf(res)));
 }
 
@@ -277,12 +277,30 @@ const MONEY_VOTE: [keyof SlipReading, FieldKey][] = [["petrol", "petrol_cash"], 
 // accept a tick or an amount that only one engine imagined).
 function applyVotes(readings: SlipReading[], merged: SlipReading, review: Set<FieldKey>): SlipReading {
   const n = readings.length;
-  const need = n >= 3 ? 2 : 1;
+  const need = n >= 3 ? 2 : n; // 3 engines: 2 must agree; 2 engines: both must agree
   const out: SlipReading = { ...merged };
   for (const key of ["department_work_checked", "kg_barnamaj_checked"] as const) {
     const votes = new Map<string, number>();
     for (const r of readings) for (const b of new Set(r[key].map((x) => x.trim().toLowerCase()))) votes.set(b, (votes.get(b) || 0) + 1);
     out[key] = [...votes.entries()].filter(([, c]) => c >= need).map(([b]) => b);
+  }
+  // Text the merge model dropped although an engine read something: keep the most common reading and flag it.
+  const TEXT_PAIRS: [keyof SlipReading, keyof SlipReading, FieldKey][] = [
+    ["guest_name_ar", "guest_name_en", "group"],
+    ["driver_name_ar", "driver_name_en", "driver_name"],
+    ["car_type_ar", "car_type_en", "vehicle"],
+    ["department_work_other_ar", "department_work_other_en", "route"],
+    ["kg_barnamaj_other_ar", "kg_barnamaj_other_en", "route"],
+    ["other_text_ar", "other_text_en", "remarks"],
+  ];
+  for (const [ar, en, fk] of TEXT_PAIRS) {
+    if ((out[ar] as string) || (out[en] as string)) continue;
+    const seen = readings.filter((r) => (r[ar] as string) || (r[en] as string));
+    if (!seen.length) continue;
+    const pick = seen.find((r) => r[en]) || seen[0];
+    (out as any)[ar] = pick[ar];
+    (out as any)[en] = pick[en];
+    review.add(fk);
   }
   for (const [rk, fk] of MONEY_VOTE) {
     const votes = new Map<string, number>();
@@ -350,6 +368,8 @@ export async function ocrSlip(env: OcrEnv, image: ArrayBuffer, mediaType: string
         final = readings[0];
       }
       final = applyVotes(readings, final, review);
+      // With several engines, "unclear" is decided by whether the engines disagree, not by the merge model's own guess.
+      final.unclear_fields = [];
       for (const k of disagreements(readings.map((r) => readingToFields(r).fields))) {
         // money fields are settled by the vote above; only names, places and dates go to review here
         if (!MONEY_VOTE.some(([, f]) => f === k)) review.add(k);
