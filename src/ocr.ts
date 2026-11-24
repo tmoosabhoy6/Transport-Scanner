@@ -121,7 +121,7 @@ async function retryBusy<T>(fn: () => Promise<T>): Promise<T> {
       return await fn();
     } catch (e) {
       const msg = String((e as Error)?.message || e);
-      const busy = /429|capacity|rate.?limit|too many|3040|3046|overloaded|unavailable|5\d\d/i.test(msg) && !/took longer/.test(msg);
+      const busy = /429|capacity|rate.?limit|too many|3040|overloaded|unavailable/i.test(msg) && !/took longer|timeout|3046/i.test(msg);
       if (!busy || attempt >= 4) throw e;
       await new Promise((r) => setTimeout(r, 4000 * attempt + Math.random() * 3000));
     }
@@ -136,7 +136,7 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 async function readWithWorkersAI(env: OcrEnv, model: string, prompt: string, dataUrl: string): Promise<SlipReading> {
-  const res = await retryBusy(() => withTimeout(env.AI.run(model as any, {
+  const res = await withTimeout(retryBusy(() => withTimeout(env.AI.run(model as any, {
     messages: [
       {
         role: "user",
@@ -148,7 +148,7 @@ async function readWithWorkersAI(env: OcrEnv, model: string, prompt: string, dat
     ],
     max_tokens: 6000,
     temperature: 0,
-  } as any), 150_000, model));
+  } as any), 150_000, model)), 180_000, model);
   return normalizeReading(extractJson(textOf(res)));
 }
 
@@ -163,17 +163,17 @@ async function mergeWithWorkersAI(env: OcrEnv, model: string, vocab: string, rea
     }
     return o;
   });
-  const res = await retryBusy(() => withTimeout(env.AI.run(model as any, {
+  const res = await withTimeout(retryBusy(() => withTimeout(env.AI.run(model as any, {
     messages: [{ role: "user", content: mergePrompt(vocab, slim) }],
     max_tokens: 8000,
     temperature: 0,
-  } as any), 90_000, "merge"));
+  } as any), 90_000, "merge")), 120_000, "merge");
   return normalizeReading(extractJson(textOf(res)));
 }
 
 async function readWithClaude(env: OcrEnv, prompt: string, b64: string, mediaType: string): Promise<SlipReading> {
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-  const client2 = client.withOptions({ timeout: 180_000, maxRetries: 1 });
+  const client2 = client.withOptions({ timeout: 90_000, maxRetries: 1 });
   const response = await client2.messages.create({
     model: env.CLAUDE_MODEL || "claude-opus-5-5",
     max_tokens: 16000,

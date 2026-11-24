@@ -36,7 +36,7 @@ export class OcrWorkflow extends WorkflowEntrypoint<Env, { id: string }> {
   async run(event: WorkflowEvent<{ id: string }>, step: WorkflowStep) {
     return step.do(
       "read slip",
-      { retries: { limit: 2, delay: "30 seconds", backoff: "exponential" }, timeout: "6 minutes" },
+      { retries: { limit: 2, delay: "30 seconds", backoff: "exponential" }, timeout: "10 minutes" },
       async () => {
         const outcome = await processSlip(this.env, event.payload.id);
         if (outcome === "retry") throw new Error("Reading failed, trying again");
