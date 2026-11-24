@@ -37,15 +37,17 @@ The "fields filled" figure on the dashboard is the missing-field rate. It counts
 
 Pax, start/end time and "During Dawaam" aren't sheet columns. They're shown in the review panel. To change a mapping, edit `src/fields.ts`.
 
-## Better Arabic handwriting accuracy (optional)
+## Which AI reads the slips
 
-By default the app uses Cloudflare's own AI models, so it needs no extra account. To have Claude read the slips instead, which handles handwritten Arabic better, add an Anthropic API key as a secret:
+With an `ANTHROPIC_API_KEY` secret on the Worker (set up), each slip is read in one pass by Claude Haiku 5.5, which takes about 10–15 seconds and costs roughly a tenth of a US cent per slip. If Claude is unavailable (for example, no credit on the Anthropic account), the app falls back to three Cloudflare AI models plus a merge step, so slips still get read.
+
+To set or replace the key:
 
 ```bash
 npx wrangler secret put ANTHROPIC_API_KEY
 ```
 
-The model is set by `CLAUDE_MODEL` in `wrangler.jsonc`.
+Add it in the Cloudflare dashboard as type **Secret** (not Text), or with the command above. The model is set by `CLAUDE_MODEL` in `wrangler.jsonc` (`claude-haiku-5-5`; `claude-opus-5-5` is more capable and about 40× the cost).
 
 ## Deploying
 

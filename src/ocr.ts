@@ -31,7 +31,11 @@ Printed fields on the slip, top to bottom:
 - Barnaamaj start time, End Time
 - FOR OFFICE USE tick boxes: During Dawaam, Overtime
 - Kg Signature
-- Bottom block (Arabic labels): تحويل بنزين (petrol), كراج (garage = parking), وجبة طعام (meal), وغير ذلك (other / misc), امضاء السائق (driver signature), امضاء المسؤول (supervisor signature)
+- Bottom block, laid out right-to-left in two columns. Each Arabic label ends with a colon and its handwritten value is written to the LEFT of that label, on the same line:
+    right column, top:    تحويل بنزين:  (petrol)        left column, top:    كراج:  (garage = parking)
+    right column, middle: وجبة طعام:  (meal)           left column, middle: وغير ذلك:  (other / misc)
+    right column, bottom: امضاء السائق:  (driver signature)   left column, bottom: امضاء المسؤول:  (supervisor signature)
+  A number written just left of "تحويل بنزين:" is the PETROL amount, even if it sits close to the كراج column. Only a number written on the line left of "كراج:" (at the far left of the slip) is parking.
 
 Note: text written on an "Others:" line belongs to the section the line is in, even if no box is ticked.`;
 
