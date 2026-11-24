@@ -5,6 +5,8 @@
   "compatibility_date": "2026-11-01",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  // Never remove variables or secrets added in the Cloudflare dashboard when deploying
+  "keep_vars": true,
   // The front end (public/) is bundled into the Worker as text modules
   "rules": [{ "type": "Text", "globs": ["**/index.html", "**/app.css", "**/app.js"], "fallthrough": true }],
   "ai": { "binding": "AI" },
@@ -22,7 +24,7 @@
     "VISION_MODELS": "@cf/qwen/qwen3.8-27b,@cf/meta/llama-4-scout-17b-16e-instruct,@cf/google/gemma-4-26b-a4b-it",
     "MERGE_MODEL": "@cf/openai/gpt-oss-120b",
     // Used only when an ANTHROPIC_API_KEY secret is set
-    "CLAUDE_MODEL": "claude-opus-5-5"
+    "CLAUDE_MODEL": "claude-haiku-5-5"
   },
   "observability": { "enabled": true },
   "limits": { "cpu_ms": 60000 }
